@@ -1,0 +1,24 @@
+---
+- hosts: all
+  tasks:
+    - name: Wait 600 seconds for target connection to become reachable/usable
+      wait_for_connection:
+
+    - name: Add Apt signing key
+      become: true
+      apt_key:
+        url: https://neilalexander.s3.dualstack.eu-west-2.amazonaws.com/deb/key.txt
+        state: present
+
+    - name: Enable Apt repository
+      become: true
+      apt_repository:
+        repo: deb http://neilalexander.s3.dualstack.eu-west-2.amazonaws.com/deb/ debian yggdrasil
+        state: present
+
+    - name: Install yggdrasil
+      become: true
+      package:
+        update_cache: true
+        name: yggdrasil
+        state: latest

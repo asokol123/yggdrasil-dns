@@ -1,0 +1,4 @@
+%{ for index, ip in vms ~}
+[vm.${index}]
+${ip} ansible_user=ubuntu
+%{ endfor ~}
