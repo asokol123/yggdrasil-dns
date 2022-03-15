@@ -1,9 +1,12 @@
 ---
 - hosts: all
+  gather_facts: no
   tasks:
     - name: Wait 600 seconds for target connection to become reachable/usable
       wait_for_connection:
 
+- hosts: all
+  tasks:
     - name: Add Apt signing key
       become: true
       apt_key:
@@ -22,3 +25,36 @@
         update_cache: true
         name: yggdrasil
         state: latest
+
+- hosts: vms
+  handlers:
+    - name: restart yggdrasil
+      become: true
+      service:
+        name: yggdrasil
+        state: restarted
+  tasks:
+    - name: Edit yggdrasil config
+      become: true
+      replace:
+        path: /etc/yggdrasil.conf
+        regexp: 'Peers: \[\]'
+        replace: 'Peers: ["tls://{{ registry_ip }}:12345"]'
+      notify: restart yggdrasil
+
+- hosts: registry
+  handlers:
+    - name: restart yggdrasil
+      become: true
+      service:
+        name: yggdrasil
+        state: restarted
+  tasks:
+    - name: Edit yggdrasil config
+      become: true
+      replace:
+        path: /etc/yggdrasil.conf
+        regexp: 'Listen: \[\]'
+        replace: 'Listen: ["tls://0.0.0.0:12345"]'
+      notify: restart yggdrasil
+

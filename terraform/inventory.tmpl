@@ -1,4 +1,8 @@
-%{ for index, ip in vms ~}
-[vm.${index}]
-${ip} ansible_user=ubuntu
+[registry]
+${vms.0} ansible_user=ubuntu
+
+[vms]%{ for index, ip in vms ~}%{ if index != 0}${ip} ansible_user=ubuntu%{ endif }
 %{ endfor ~}
+
+[vms:vars]
+registry_ip=${vms.0}
