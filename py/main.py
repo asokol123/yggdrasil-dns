@@ -8,7 +8,7 @@ import os
 def parse_args():
     parser = argparse.ArgumentParser()
     
-    parser.add_argument('--machine', '-m', help='machine to send request to', type=int, required=True)
+    parser.add_argument('--endpoint', '-e', help='request endpoint', type=int, required=True)
     
     parser.add_argument('--address', '-a', help='ip to find it\'s site', type=int, required=False)
     parser.add_argument('--site', '-s', help='site to find it\'s ip', type=int, required=False)
@@ -33,15 +33,14 @@ def main():
     else:
         assert False
     
-    key = os.environ.get(args.key_name)
+    key = os.environ['SECRET_KEY']
     hash_key = hmac.new(key, request_params, hashlib.sha256).hexdigest()
-    print(hash_key)
     
-    current_timestamp = time.time()
+    current_timestamp = int(time.time())
     request_params["timestamp"] = current_timestamp
-    request_params["key"] = hash_key
+    request_params["signature"] = hash_key
     
-    request = requests.post(args.machine, json=request_params, timeout=args.timeout)
+    request = requests.post(args.endpoint, json=request_params, timeout=args.timeout)
     print(f"Status: {request.status_code}.")
     print(f"Request: {request.json()}.")
     
