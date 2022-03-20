@@ -42,7 +42,7 @@ def main():
     
     request = requests.post(args.endpoint, json=request_params, timeout=args.timeout)
     print(f"Status: {request.status_code}.")
-    print(f"Request: {request.json()}.")
+    print(f"Response: {request.json()}.")
     
 
 if __name__ == '__main__':
