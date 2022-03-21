@@ -34,7 +34,7 @@ def main():
         assert False
     
     key = os.environ['SECRET_KEY']
-    hash_key = hmac.new(key, request_params, hashlib.sha256).hexdigest()
+    hash_key = hmac.new(key, dict(sorted(request_params.items())), hashlib.sha256).hexdigest()
     
     current_timestamp = int(time.time())
     request_params["timestamp"] = current_timestamp
