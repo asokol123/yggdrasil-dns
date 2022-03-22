@@ -37,7 +37,7 @@ def main():
     key = os.environ['SECRET_KEY']
     while True:
         request_params["nonce"] = nonce
-        hash_key = hmac.new(key, json.dumps(dict(sorted(request_params.items()))).encode('utf-8'), hashlib.sha256).hexdigest()
+        hash_key = hashlib.sha256(json.dumps(request_params).encode()).hexdigest()
         if hash_key.startswith("0" * args.n):
             break
     
