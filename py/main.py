@@ -14,7 +14,7 @@ def parse_args():
     parser.add_argument('--site', '-s', help='site to find it\'s ip', type=int, required=False)
     
     parser.add_argument('--owner', '-o', help='owner of the message', type=int, required=True)
-    parser.add_argument('--timeout', '-t', help='request timeout', default=5, type=int, required=True)
+    parser.add_argument('--timeout', '-t', help='request timeout', default=5, type=int, required=False)
     parser.add_argument('--number-of-zeros', '-n', help='required number of zeros in hash', dest='n', default=4, type=int, required=False)
 
     return parser.parse_args()
