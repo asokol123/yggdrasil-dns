@@ -16,7 +16,7 @@ def parse_args():
     parser.add_argument('--owner', '-o', help='owner of the message', type=int, required=True)
     parser.add_argument('--key-name', '-k', help='name of the key for hash', dest='key_name', type=str, required=True)
     parser.add_argument('--timeout', '-t', help='request timeout', type=int, required=True)
-    parser.add_argument('--number-of-zeros', '-n', help='required number of zeros in hash', default=4, type=int, required=False)
+    parser.add_argument('--number-of-zeros', '-n', help='required number of zeros in hash', dest='n', default=4, type=int, required=False)
 
     return parser.parse_args()
 
@@ -39,7 +39,7 @@ def main():
     while True:
         request_params["nonce"] = nonce
         hash_key = hmac.new(key, json.dumps(dict(sorted(request_params.items()))).encode('utf-8'), hashlib.sha256).hexdigest()
-        if hash_key[0:n] == "0" * n:
+        if hash_key[0:args.n] == "0" * args.n:
             break
     
     current_timestamp = int(time.time())
