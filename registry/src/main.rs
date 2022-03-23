@@ -35,14 +35,16 @@ struct State {
     db: sqlx::SqlitePool,
 }
 
-fn internal_error(e: impl std::fmt::Debug) -> StatusCode {
+fn internal_error(e: impl std::fmt::Debug) -> (StatusCode, String) {
+    let resp = format!("Internal error: {:?}", e);
     tracing::error!("Internal error: {:?}", e);
-    StatusCode::INTERNAL_SERVER_ERROR
+    (StatusCode::INTERNAL_SERVER_ERROR, resp)
 }
 
-fn bad_request(e: impl std::fmt::Debug) -> StatusCode {
+fn bad_request(e: impl std::fmt::Debug) -> (StatusCode, String) {
+    let resp = format!("Bad request: {:?}", e);
     tracing::info!("Got invalid request: {:?}", e);
-    StatusCode::BAD_REQUEST
+    (StatusCode::BAD_REQUEST, resp)
 }
 
 #[derive(Deserialize)]
@@ -52,7 +54,10 @@ struct RegisterRequest {
     timestamp: u64,
 }
 
-async fn register(body: String, Extension(state): Extension<Arc<State>>) -> Result<(), StatusCode> {
+async fn register(
+    body: String,
+    Extension(state): Extension<Arc<State>>,
+) -> Result<(), (StatusCode, String)> {
     if !check_nonce(&body) {
         return Err(bad_request("bad nonce"));
     }
@@ -70,7 +75,10 @@ async fn register(body: String, Extension(state): Extension<Arc<State>>) -> Resu
         .map_err(internal_error)?
         .is_some()
     {
-        return Err(StatusCode::CONFLICT);
+        return Err((
+            StatusCode::CONFLICT,
+            format!("User {} already exists", &req.name),
+        ));
     }
 
     sqlx::query("INSERT INTO users (name, pubkey) VALUES ($1, $2)")
@@ -95,12 +103,15 @@ struct SetSiteRequest {
     timestamp: u64,
 }
 
-fn check_signature(req: &SetSiteRequest) -> bool {
+fn check_signature(req: &SetSiteRequest, _pubkey: &str) -> bool {
     // TODO
     !req.signature.is_empty()
 }
 
-async fn set_site(body: String, Extension(state): Extension<Arc<State>>) -> Result<(), StatusCode> {
+async fn set_site(
+    body: String,
+    Extension(state): Extension<Arc<State>>,
+) -> Result<(), (StatusCode, String)> {
     if !check_nonce(&body) {
         return Err(bad_request("bad nonce"));
     }
@@ -111,15 +122,23 @@ async fn set_site(body: String, Extension(state): Extension<Arc<State>>) -> Resu
     }
 
     let mut tx = state.db.begin().await.map_err(internal_error)?;
-    let pubkey: (String,) = sqlx::query_as("SELECT pubkey FROM users WHERE name = $1")
+    let pubkey = sqlx::query_as::<_, (String,)>("SELECT pubkey FROM users WHERE name = $1")
         .bind(&req.owner)
         .fetch_optional(&mut tx)
         .await
         .map_err(internal_error)?
-        .ok_or(StatusCode::UNAUTHORIZED)?;
-    let _pubkey = pubkey.0;
-    if !check_signature(&req) {
-        return Err(StatusCode::UNAUTHORIZED);
+        .ok_or_else(|| {
+            (
+                StatusCode::UNAUTHORIZED,
+                format!("No user with name {}", &req.owner),
+            )
+        })?
+        .0;
+    if !check_signature(&req, &pubkey) {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            format!("Invalid signature for user {}", &req.owner),
+        ));
     }
 
     if let Some(owner) = sqlx::query_as::<_, (String,)>("SELECT owner FROM sites WHERE name = $1")
@@ -130,7 +149,13 @@ async fn set_site(body: String, Extension(state): Extension<Arc<State>>) -> Resu
     {
         let owner = owner.0;
         if owner != req.owner {
-            return Err(StatusCode::UNAUTHORIZED);
+            return Err((
+                StatusCode::FORBIDDEN,
+                format!(
+                    "Site {} is owned by {}, not {}",
+                    &req.site, &req.owner, &owner
+                ),
+            ));
         }
         sqlx::query("UPDATE sites SET address = $1, expires = $2 WHERE name = $3")
             .bind(&req.address)
@@ -179,7 +204,7 @@ struct Site {
 async fn get_site(
     body: String,
     Extension(state): Extension<Arc<State>>,
-) -> Result<Json<GetSiteResponse>, StatusCode> {
+) -> Result<Json<GetSiteResponse>, (StatusCode, String)> {
     if !check_nonce(&body) {
         return Err(bad_request("bad nonce"));
     }
@@ -194,10 +219,21 @@ async fn get_site(
         .fetch_optional(&state.db)
         .await
         .map_err(internal_error)?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                format!("No site with name {}", &req.name),
+            )
+        })?;
 
     if site.expires < get_current_timestamp().map_err(internal_error)? {
-        return Err(StatusCode::GONE);
+        return Err((
+            StatusCode::GONE,
+            format!(
+                "Site {} already expired, please update it if you are owner",
+                &req.name
+            ),
+        ));
     }
 
     Ok(Json(GetSiteResponse {
