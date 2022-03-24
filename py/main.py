@@ -53,7 +53,7 @@ def main():
         request_params['nonce'] += 1
         hash_key = hashlib.sha256(json.dumps(request_params).encode()).hexdigest()
     
-    request = requests.method(request_type, endpoint, json=request_params, timeout=timeout)
+    request = requests.method(request_type, url=f'{endpoint}/{args.command}', json=request_params, timeout=timeout)
     print(f'Status: {request.status_code}')
     print(f'Response: {request.json()}')
     
