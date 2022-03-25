@@ -6,12 +6,25 @@ import requests
 import time
 
 
+DEFAULT_DIFFICULTY = 4
+DEFAULT_TIMEOUT = 5
+
+
+class TopLevelArgs(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        if not getattr(namespace, 'options', None):
+            namespace.options = {}
+        namespace.options[self.dest] = values
+
+
 def parse_args():
     parser = argparse.ArgumentParser()
     
-    parser.add_argument('--endpoint', '-e', help='request endpoint', type=int, required=True)
-    parser.add_argument('--timeout', '-t', help='request timeout', type=int, default=5)
-    parser.add_argument('--pow-zeros', '-z', help='required number of zeros in pow', type=int, default=4)
+    parser.add_argument('--endpoint', '-e', help='request endpoint', action=TopLevelArgs, default=argparse.SUPPRESS)
+    parser.add_argument('--timeout', '-t', help='request timeout', type=int, action=TopLevelArgs,
+                        default=argparse.SUPPRESS)
+    parser.add_argument('--pow-zeros', '-z', help='required number of zeros in pow', type=int, action=TopLevelArgs,
+                        default=argparse.SUPPRESS)
     subparsers = parser.add_subparsers(dest='command')
 
     register = subparsers.add_parser('register', help='sign user up')
@@ -26,22 +39,19 @@ def parse_args():
     get_site = subparsers.add_parser('get_site', help='get site by it\'s name')
     get_site.add_argument('--site', '-s', help='site to find', required=True)
 
-    return parser.parse_args()
+    return vars(parser.parse_args())
 
 
 def main():
-    args = parse_args()
-    request_params = vars(args)
-    endpoint = request_params.pop('endpoint')
-    timeout = request_params.pop('timeout')
-    pow_zeros = request_params.pop('pow_zeros')
+    request_params = parse_args()
+    options, command = request_params.pop('options'), request_params.pop('command')
 
     request_type = 'POST'
-    if args.command == 'register':
-        request_params['pubkey'] = os.environ['SECRET_KEY']
-    elif args.command == 'set_site':
+    if command == 'register':
+        request_params['pubkey'] = os.environ['PUBLIC_KEY']
+    elif command == 'set_site':
         request_params['signature'] = 'lol'  # TODO: signature
-    elif args.command == 'set_site':
+    elif command == 'get_site':
         request_type = 'GET'
     else:
         raise RuntimeError('Unknown command')
@@ -49,11 +59,12 @@ def main():
     request_params['timestamp'] = int(time.time())
     request_params['nonce'] = 1
     hash_key = hashlib.sha256(json.dumps(request_params).encode()).hexdigest()
-    while not hash_key.startswith('0' * pow_zeros):
+    while not hash_key.startswith('0' * options.get('pow_zeros', DEFAULT_DIFFICULTY)):
         request_params['nonce'] += 1
         hash_key = hashlib.sha256(json.dumps(request_params).encode()).hexdigest()
     
-    request = requests.method(request_type, url=f'{endpoint}/{args.command}', json=request_params, timeout=timeout)
+    request = requests.request(request_type, url=f'{options["endpoint"]}/{command}', json=request_params,
+                               timeout=options.get('timeout', DEFAULT_TIMEOUT))
     print(f'Status: {request.status_code}')
     print(f'Response: {request.json()}')
     
