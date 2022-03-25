@@ -5,6 +5,7 @@ import os
 import requests
 import time
 
+from ecdsa import SigningKey
 
 DEFAULT_DIFFICULTY = 4
 DEFAULT_TIMEOUT = 5
@@ -19,7 +20,7 @@ class TopLevelArgs(argparse.Action):
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    
+
     parser.add_argument('--endpoint', '-e', help='request endpoint', action=TopLevelArgs, default=argparse.SUPPRESS)
     parser.add_argument('--timeout', '-t', help='request timeout', type=int, action=TopLevelArgs,
                         default=argparse.SUPPRESS)
@@ -35,6 +36,7 @@ def parse_args():
     set_site.add_argument('--address', '-a', help='site\'s ip', required=True)
     set_site.add_argument('--expires', '-E', help='site\'s expiration timestamp', type=int, required=True)
     set_site.add_argument('--owner', '-o', help='site\'s owner', required=True)
+    set_site.add_argument('--signature-filename', '-sf', help='file with a signature', required=True)
 
     get_site = subparsers.add_parser('get_site', help='get site by it\'s name')
     get_site.add_argument('--site', '-s', help='site to find', required=True)
@@ -45,29 +47,34 @@ def parse_args():
 def main():
     request_params = parse_args()
     options, command = request_params.pop('options'), request_params.pop('command')
+    request_params['timestamp'] = int(time.time())
 
     request_type = 'POST'
     if command == 'register':
         request_params['pubkey'] = os.environ['PUBLIC_KEY']
     elif command == 'set_site':
-        request_params['signature'] = 'lol'  # TODO: signature
+        filename = request_params.pop('signature_filename')
+        with open(filename, 'r') as f:
+            sk = SigningKey.from_pem(f.read())
+
+        message = request_params['owner'] + request_params['site'] + str(request_params['timestamp'])
+        request_params['signature'] = sk.sign(message.encode()).hex()
     elif command == 'get_site':
         request_type = 'GET'
     else:
         raise RuntimeError('Unknown command')
 
-    request_params['timestamp'] = int(time.time())
     request_params['nonce'] = 1
     hash_key = hashlib.sha256(json.dumps(request_params).encode()).hexdigest()
     while not hash_key.startswith('0' * options.get('pow_zeros', DEFAULT_DIFFICULTY)):
         request_params['nonce'] += 1
         hash_key = hashlib.sha256(json.dumps(request_params).encode()).hexdigest()
-    
+
     request = requests.request(request_type, url=f'{options["endpoint"]}/{command}', json=request_params,
                                timeout=options.get('timeout', DEFAULT_TIMEOUT))
     print(f'Status: {request.status_code}')
     print(f'Response: {request.json()}')
-    
+
 
 if __name__ == '__main__':
     main()
