@@ -59,19 +59,16 @@ func (r *GetSiteRequest) IncNonce() {
 }
 
 func addProofOfWork(req HasNonce, difficulty int) {
-	for {
-		h := sha256.New()
+	h := sha256.New()
+	for !strings.HasPrefix(hex.EncodeToString(h.Sum(nil)), strings.Repeat("0", difficulty)) {
+		req.IncNonce()
+		h.Reset()
+
 		data, err := json.Marshal(req)
 		if err != nil {
 			panic(err)
 		}
-
 		h.Write(data)
-		if strings.HasPrefix(hex.EncodeToString(h.Sum(nil)), strings.Repeat("0", difficulty)) {
-			break
-		} else {
-			req.IncNonce()
-		}
 	}
 }
 
@@ -137,7 +134,7 @@ func main() {
 		Run: func(cmd *cobra.Command, args []string) {
 			gsr.Timestamp = int(time.Now().Unix())
 			addProofOfWork(&gsr, difficulty)
-			request("GET" /*"http://"+*/, endpoint+"/register", gsr, timeout)
+			request("GET" /*"http://"+*/, endpoint+"/get_site", gsr, timeout)
 		},
 	}
 	getSiteCmd.Flags().StringVarP(&gsr.Site, "site", "s", "", "site to find")
