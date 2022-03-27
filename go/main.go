@@ -119,10 +119,9 @@ func main() {
 		Use:   "register --name [name]",
 		Short: "Register a new user",
 		Run: func(cmd *cobra.Command, args []string) {
-			rr.PubKey = os.Getenv("PUBLIC_KEY")
-			if rr.PubKey == "" {
-				panic("empty PUBLIC_KEY")
-			}
+			data, err := os.ReadFile(signatureFilename)
+			check(err)
+			rr.PubKey = string(data)
 
 			rr.Timestamp = int(time.Now().Unix())
 			addProofOfWork(&rr, difficulty)
@@ -130,7 +129,9 @@ func main() {
 		},
 	}
 	registerCmd.Flags().StringVarP(&rr.Name, "name", "n", "", "user to register")
+	registerCmd.Flags().StringVarP(&signatureFilename, "signature-filename", "f", "", "file with a signature")
 	registerCmd.MarkFlagRequired("name")
+	registerCmd.MarkFlagRequired("signature-filename")
 
 	var setSiteCmd = &cobra.Command{
 		Use:   "set_site --site [site] --address [address] --expires [expires] --owner [owner] -sf [signature_filename]",
