@@ -4,7 +4,6 @@ use std::{
     sync::Arc,
     time::{SystemTime, SystemTimeError, UNIX_EPOCH},
 };
-
 use axum::{
     extract::Extension,
     http::StatusCode,
@@ -116,11 +115,10 @@ fn check_signature(
     pubkey: &p256::ecdsa::VerifyingKey,
 ) -> Result<bool, (StatusCode, String)> {
     let message = req.owner.clone() + &req.site + &req.timestamp.to_string();
-    let hash = Sha256::digest(message);
     let signature = hex::decode(&req.signature).map_err(bad_request)?;
     Ok(pubkey
         .verify(
-            hash.as_slice(),
+            message.as_bytes(),
             &p256::ecdsa::Signature::from_der(&signature).map_err(bad_request)?,
         )
         .is_ok())
