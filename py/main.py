@@ -6,6 +6,7 @@ import requests
 import time
 
 from ecdsa import SigningKey
+from ecdsa.util import sigencode_der
 
 DEFAULT_DIFFICULTY = 4
 DEFAULT_TIMEOUT = 5
@@ -58,7 +59,7 @@ def main():
             sk = SigningKey.from_pem(f.read())
 
         message = request_params['owner'] + request_params['site'] + str(request_params['timestamp'])
-        request_params['signature'] = sk.sign(message.encode()).hex()
+        request_params['signature'] = sk.sign(message.encode(), hashfunc=hashlib.sha256, sigencode=sigencode_der).hex()
     elif command == 'get_site':
         request_type = 'GET'
     else:
@@ -70,7 +71,7 @@ def main():
         request_params['nonce'] += 1
         hash_key = hashlib.sha256(json.dumps(request_params).encode()).hexdigest()
 
-    request = requests.request(request_type, url=f'{options["endpoint"]}/{command}', json=request_params,
+    request = requests.request(request_type, url=f'http://{options["endpoint"]}/{command}', json=request_params,
                                timeout=options.get('timeout', DEFAULT_TIMEOUT))
     print(f'Status: {request.status_code}')
     print(f'Response: {request.json()}')
