@@ -36,7 +36,7 @@ fn current_timestamp() -> u64 {
 }
 
 fn check_timestamp(ts: u64) -> bool {
-    current_timestamp().abs_diff(ts) < 30
+    current_timestamp().wrapping_sub(ts) < 30
 }
 
 struct State {
