@@ -199,7 +199,7 @@ async fn set_site(
 
 #[derive(Deserialize)]
 struct GetSiteRequest {
-    name: String,
+    site: String,
     timestamp: u64,
 }
 
@@ -232,14 +232,14 @@ async fn get_site(
     }
 
     let site: Site = sqlx::query_as("SELECT address, expires FROM sites WHERE name = $1")
-        .bind(&req.name)
+        .bind(&req.site)
         .fetch_optional(&state.db)
         .await
         .map_err(internal_error)?
         .ok_or_else(|| {
             (
                 StatusCode::NOT_FOUND,
-                Json(format!("No site with name {}", &req.name)),
+                Json(format!("No site with name {}", &req.site)),
             )
         })?;
 
@@ -248,7 +248,7 @@ async fn get_site(
             StatusCode::GONE,
             Json(format!(
                 "Site {} already expired, please update it if you are owner",
-                &req.name
+                &req.site
             )),
         ));
     }
