@@ -2,15 +2,19 @@ package main
 
 import (
 	"bytes"
+	"crypto/ecdsa"
+	"crypto/rand"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"github.com/spf13/cobra"
 	"io"
-	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -40,6 +44,7 @@ type SetSiteRequest struct {
 	Address   string `json:"address"`
 	Expires   int    `json:"expires"`
 	Owner     string `json:"owner"`
+	Signature string `json:"signature"`
 	Timestamp int    `json:"timestamp"`
 	Nonce     int    `json:"nonce"`
 }
@@ -58,6 +63,12 @@ func (r *GetSiteRequest) IncNonce() {
 	r.Nonce += 1
 }
 
+func check(e error) {
+	if e != nil {
+		panic(e)
+	}
+}
+
 func addProofOfWork(req HasNonce, difficulty int) {
 	h := sha256.New()
 	for !strings.HasPrefix(hex.EncodeToString(h.Sum(nil)), strings.Repeat("0", difficulty)) {
@@ -65,46 +76,37 @@ func addProofOfWork(req HasNonce, difficulty int) {
 		h.Reset()
 
 		data, err := json.Marshal(req)
-		if err != nil {
-			panic(err)
-		}
+		check(err)
 		h.Write(data)
 	}
 }
 
 func request(method string, url string, body interface{}, timeout time.Duration) {
 	encodedBody, err := json.Marshal(body)
-	if err != nil {
-		panic(err)
-	}
+	check(err)
 
 	client := http.Client{Timeout: timeout}
 	req, err := http.NewRequest(method, url, bytes.NewReader(encodedBody))
-	if err != nil {
-		panic(err)
-	}
+	check(err)
 
 	resp, err := client.Do(req)
-	if err != nil {
-		panic(err)
-	}
+	check(err)
 	fmt.Println("Status: ", resp.Status)
 
 	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		log.Fatal(err)
-	}
+	check(err)
 	fmt.Println("Response: ", string(respBody))
 }
 
 func main() {
 	var (
-		rr RegisterRequest
-		//ssr        SetSiteRequest
-		gsr        GetSiteRequest
-		endpoint   string
-		timeout    time.Duration
-		difficulty int
+		rr                RegisterRequest
+		ssr               SetSiteRequest
+		gsr               GetSiteRequest
+		endpoint          string
+		timeout           time.Duration
+		difficulty        int
+		signatureFilename string
 	)
 
 	var rootCmd = &cobra.Command{}
@@ -123,10 +125,38 @@ func main() {
 
 			rr.Timestamp = int(time.Now().Unix())
 			addProofOfWork(&rr, difficulty)
-			request("POST" /*"http://"+*/, endpoint+"/register", rr, timeout)
+			request("POST", "http://"+endpoint+"/register", rr, timeout)
 		},
 	}
 	registerCmd.Flags().StringVarP(&rr.Name, "name", "n", "", "user to register")
+
+	var setSiteCmd = &cobra.Command{
+		Use:   "set_site --site [site] --address [address] --expires [expires] --owner [owner] -sf [signature_filename]",
+		Short: "Create a new site or update the existing one",
+		Run: func(cmd *cobra.Command, args []string) {
+			ssr.Timestamp = int(time.Now().Unix())
+			data, err := os.ReadFile(signatureFilename)
+			check(err)
+
+			block, _ := pem.Decode(data)
+			if block == nil {
+				panic("Invalid signature")
+			}
+			privateKey, err := x509.ParseECPrivateKey(block.Bytes)
+			check(err)
+			msg := sha256.Sum256([]byte(ssr.Owner + ssr.Site + strconv.Itoa(ssr.Timestamp)))
+			signature, err := ecdsa.SignASN1(rand.Reader, privateKey, msg[:])
+			ssr.Signature = hex.EncodeToString(signature)
+
+			addProofOfWork(&ssr, difficulty)
+			request("POST", "http://"+endpoint+"/set_site", ssr, timeout)
+		},
+	}
+	setSiteCmd.Flags().StringVar(&ssr.Site, "site", "", "site to find")
+	setSiteCmd.Flags().StringVarP(&ssr.Address, "address", "a", "", "site's ip")
+	setSiteCmd.Flags().IntVarP(&ssr.Expires, "expires", "E", 0, "site's expiration time")
+	setSiteCmd.Flags().StringVarP(&ssr.Owner, "owner", "s", "", "site to find")
+	setSiteCmd.Flags().StringVarP(&signatureFilename, "signature filename", "f", "", "file with a signature")
 
 	var getSiteCmd = &cobra.Command{
 		Use:   "get_site --site [site]",
@@ -134,12 +164,13 @@ func main() {
 		Run: func(cmd *cobra.Command, args []string) {
 			gsr.Timestamp = int(time.Now().Unix())
 			addProofOfWork(&gsr, difficulty)
-			request("GET" /*"http://"+*/, endpoint+"/get_site", gsr, timeout)
+			request("GET", "http://"+endpoint+"/get_site", gsr, timeout)
 		},
 	}
 	getSiteCmd.Flags().StringVarP(&gsr.Site, "site", "s", "", "site to find")
 
 	rootCmd.AddCommand(registerCmd)
+	rootCmd.AddCommand(setSiteCmd)
 	rootCmd.AddCommand(getSiteCmd)
 	rootCmd.Execute()
 }
