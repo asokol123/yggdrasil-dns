@@ -113,6 +113,7 @@ func main() {
 	rootCmd.PersistentFlags().StringVarP(&endpoint, "endpoint", "e", "", "request endpoint")
 	rootCmd.PersistentFlags().DurationVarP(&timeout, "timeout", "t", DefaultTimeout, "request timeout")
 	rootCmd.PersistentFlags().IntVarP(&difficulty, "pow-zeros", "z", DefaultDifficulty, "required number of zeros in pow")
+	rootCmd.MarkPersistentFlagRequired("endpoint")
 
 	var registerCmd = &cobra.Command{
 		Use:   "register --name [name]",
@@ -129,6 +130,7 @@ func main() {
 		},
 	}
 	registerCmd.Flags().StringVarP(&rr.Name, "name", "n", "", "user to register")
+	registerCmd.MarkFlagRequired("name")
 
 	var setSiteCmd = &cobra.Command{
 		Use:   "set_site --site [site] --address [address] --expires [expires] --owner [owner] -sf [signature_filename]",
@@ -156,7 +158,10 @@ func main() {
 	setSiteCmd.Flags().StringVarP(&ssr.Address, "address", "a", "", "site's ip")
 	setSiteCmd.Flags().IntVarP(&ssr.Expires, "expires", "E", 0, "site's expiration time")
 	setSiteCmd.Flags().StringVarP(&ssr.Owner, "owner", "s", "", "site to find")
-	setSiteCmd.Flags().StringVarP(&signatureFilename, "signature filename", "f", "", "file with a signature")
+	setSiteCmd.Flags().StringVarP(&signatureFilename, "signature-filename", "f", "", "file with a signature")
+	for _, flag := range []string{"site", "address", "expires", "owner", "signature filename"} {
+		setSiteCmd.MarkFlagRequired(flag)
+	}
 
 	var getSiteCmd = &cobra.Command{
 		Use:   "get_site --site [site]",
@@ -168,6 +173,7 @@ func main() {
 		},
 	}
 	getSiteCmd.Flags().StringVarP(&gsr.Site, "site", "s", "", "site to find")
+	getSiteCmd.MarkFlagRequired("site")
 
 	rootCmd.AddCommand(registerCmd)
 	rootCmd.AddCommand(setSiteCmd)
