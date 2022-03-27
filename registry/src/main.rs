@@ -1,5 +1,6 @@
 mod db;
 use std::{
+    str::FromStr,
     sync::Arc,
     time::{SystemTime, SystemTimeError, UNIX_EPOCH},
 };
@@ -11,7 +12,9 @@ use axum::{
     Json, Router,
 };
 use clap::Parser;
+use p256::ecdsa::{signature::Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 #[derive(Debug, Parser)]
 struct Args {
@@ -21,14 +24,19 @@ struct Args {
     db_addr: String,
 }
 
-fn check_nonce(_body: impl AsRef<str>) -> bool {
-    // TODO: check nonce
-    true
+fn check_nonce(body: impl AsRef<[u8]>) -> bool {
+    hex::encode(Sha256::digest(body.as_ref())).starts_with("0000")
 }
 
-fn check_timestamp(_ts: u64) -> bool {
-    // TODO: check timestamp
-    true
+fn current_timestamp() -> u64 {
+    let now = std::time::SystemTime::now();
+    now.duration_since(std::time::UNIX_EPOCH)
+        .expect("Time is before unix epoch")
+        .as_secs()
+}
+
+fn check_timestamp(ts: u64) -> bool {
+    current_timestamp().abs_diff(ts) < 30
 }
 
 struct State {
@@ -103,9 +111,19 @@ struct SetSiteRequest {
     timestamp: u64,
 }
 
-fn check_signature(req: &SetSiteRequest, _pubkey: &str) -> bool {
-    // TODO
-    !req.signature.is_empty()
+fn check_signature(
+    req: &SetSiteRequest,
+    pubkey: &p256::ecdsa::VerifyingKey,
+) -> Result<bool, (StatusCode, String)> {
+    let message = req.owner.clone() + &req.site + &req.timestamp.to_string();
+    let hash = Sha256::digest(message);
+    let signature = hex::decode(&req.signature).map_err(bad_request)?;
+    Ok(pubkey
+        .verify(
+            hash.as_slice(),
+            &p256::ecdsa::Signature::from_der(&signature).map_err(bad_request)?,
+        )
+        .is_ok())
 }
 
 async fn set_site(
@@ -134,7 +152,8 @@ async fn set_site(
             )
         })?
         .0;
-    if !check_signature(&req, &pubkey) {
+    let pubkey = VerifyingKey::from_str(&pubkey).map_err(internal_error)?;
+    if !check_signature(&req, &pubkey)? {
         return Err((
             StatusCode::UNAUTHORIZED,
             format!("Invalid signature for user {}", &req.owner),
