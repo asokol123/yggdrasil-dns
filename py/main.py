@@ -31,6 +31,7 @@ def parse_args():
 
     register = subparsers.add_parser('register', help='sign user up')
     register.add_argument('--name', '-u', help='user to register', required=True)
+    register.add_argument('--signature-filename', '-f', help='file with a signature', required=True)
 
     set_site = subparsers.add_parser('set_site', help='register a new site or update an existing one')
     set_site.add_argument('--site', '-s', help='site to register or update', required=True)
@@ -52,10 +53,12 @@ def main():
 
     request_type = 'POST'
     if command == 'register':
-        request_params['pubkey'] = os.environ['PUBLIC_KEY']
-    elif command == 'set_site':
         filename = request_params.pop('signature_filename')
         with open(filename, 'r') as f:
+            request_params['pubkey'] = f.read()
+    elif command == 'set_site':
+        filename = request_params.pop('signature_filename')
+        with open(filename, 'rb') as f:
             sk = SigningKey.from_pem(f.read())
 
         message = request_params['owner'] + request_params['site'] + str(request_params['timestamp'])
