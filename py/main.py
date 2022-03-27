@@ -37,7 +37,7 @@ def parse_args():
     set_site.add_argument('--address', '-a', help='site\'s ip', required=True)
     set_site.add_argument('--expires', '-E', help='site\'s expiration timestamp', type=int, required=True)
     set_site.add_argument('--owner', '-o', help='site\'s owner', required=True)
-    set_site.add_argument('--signature-filename', '-sf', help='file with a signature', required=True)
+    set_site.add_argument('--signature-filename', '-f', help='file with a signature', required=True)
 
     get_site = subparsers.add_parser('get_site', help='get site by it\'s name')
     get_site.add_argument('--site', '-s', help='site to find', required=True)
