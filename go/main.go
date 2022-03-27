@@ -159,7 +159,7 @@ func main() {
 	setSiteCmd.Flags().IntVarP(&ssr.Expires, "expires", "E", 0, "site's expiration time")
 	setSiteCmd.Flags().StringVarP(&ssr.Owner, "owner", "s", "", "site to find")
 	setSiteCmd.Flags().StringVarP(&signatureFilename, "signature-filename", "f", "", "file with a signature")
-	for _, flag := range []string{"site", "address", "expires", "owner", "signature filename"} {
+	for _, flag := range []string{"site", "address", "expires", "owner", "signature-filename"} {
 		setSiteCmd.MarkFlagRequired(flag)
 	}
 
