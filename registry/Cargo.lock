@@ -722,6 +722,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "lru"
+version = "0.7.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fcb87f3080f6d1d69e8c564c0fcfde1d7aa8cc451ce40cae89479111f03bc0eb"
+dependencies = [
+ "hashbrown",
+]
+
+[[package]]
 name = "matches"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1031,6 +1040,7 @@ dependencies = [
  "clap",
  "hex",
  "jsonwebtoken",
+ "lru",
  "p256",
  "serde",
  "serde_json",

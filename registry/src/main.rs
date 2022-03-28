@@ -11,9 +11,11 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
     str::FromStr,
-    sync::Arc,
+    sync::{Arc, Mutex},
     time::{SystemTime, SystemTimeError, UNIX_EPOCH},
 };
+
+const HASH_CASH_SIZE: usize = 10_000;
 
 #[derive(Debug, Parser)]
 struct Args {
@@ -23,8 +25,13 @@ struct Args {
     db_addr: String,
 }
 
-fn check_nonce(body: impl AsRef<[u8]>) -> bool {
-    hex::encode(Sha256::digest(body.as_ref())).starts_with("0000")
+fn check_nonce(body: impl AsRef<[u8]>, cache: &Mutex<lru::LruCache<String, ()>>) -> bool {
+    let mut cache = cache.lock().unwrap();
+    let hash = hex::encode(Sha256::digest(body.as_ref()));
+    if !hash.starts_with("0000") {
+        return false;
+    }
+    cache.put(hash, ()).is_none()
 }
 
 fn current_timestamp() -> u64 {
@@ -40,6 +47,7 @@ fn check_timestamp(ts: u64) -> bool {
 
 struct State {
     db: sqlx::SqlitePool,
+    cache: Mutex<lru::LruCache<String, ()>>,
 }
 
 fn internal_error(e: impl std::fmt::Debug) -> (StatusCode, Json<String>) {
@@ -65,7 +73,7 @@ async fn register(
     body: String,
     Extension(state): Extension<Arc<State>>,
 ) -> Result<(), (StatusCode, Json<String>)> {
-    if !check_nonce(&body) {
+    if !check_nonce(&body, &state.cache) {
         return Err(bad_request("bad nonce"));
     }
 
@@ -128,7 +136,7 @@ async fn set_site(
     body: String,
     Extension(state): Extension<Arc<State>>,
 ) -> Result<(), (StatusCode, Json<String>)> {
-    if !check_nonce(&body) {
+    if !check_nonce(&body, &state.cache) {
         return Err(bad_request("bad nonce"));
     }
 
@@ -222,7 +230,7 @@ async fn get_site(
     body: String,
     Extension(state): Extension<Arc<State>>,
 ) -> Result<Json<GetSiteResponse>, (StatusCode, Json<String>)> {
-    if !check_nonce(&body) {
+    if !check_nonce(&body, &state.cache) {
         return Err(bad_request("bad nonce"));
     }
 
@@ -266,6 +274,7 @@ async fn main() {
 
     let state = Arc::new(State {
         db: db::try_connect_db(&args.db_addr).await.unwrap(),
+        cache: Mutex::new(lru::LruCache::new(HASH_CASH_SIZE)),
     });
 
     let app = Router::new()
