@@ -1,3 +1,4 @@
 terraform/inventory
 .terraform*
 terraform.tfstate*
+files/

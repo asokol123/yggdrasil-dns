@@ -1,9 +1,4 @@
 mod db;
-use std::{
-    sync::Arc,
-    time::{SystemTime, SystemTimeError, UNIX_EPOCH},
-};
-
 use axum::{
     extract::Extension,
     http::StatusCode,
@@ -11,7 +6,16 @@ use axum::{
     Json, Router,
 };
 use clap::Parser;
+use p256::ecdsa::{signature::Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use std::{
+    str::FromStr,
+    sync::{Arc, Mutex},
+    time::{SystemTime, SystemTimeError, UNIX_EPOCH},
+};
+
+const HASH_CASH_SIZE: usize = 10_000;
 
 #[derive(Debug, Parser)]
 struct Args {
@@ -21,30 +25,41 @@ struct Args {
     db_addr: String,
 }
 
-fn check_nonce(_body: impl AsRef<str>) -> bool {
-    // TODO: check nonce
-    true
+fn check_nonce(body: impl AsRef<[u8]>, cache: &Mutex<lru::LruCache<String, ()>>) -> bool {
+    let mut cache = cache.lock().unwrap();
+    let hash = hex::encode(Sha256::digest(body.as_ref()));
+    if !hash.starts_with("0000") {
+        return false;
+    }
+    cache.put(hash, ()).is_none()
 }
 
-fn check_timestamp(_ts: u64) -> bool {
-    // TODO: check timestamp
-    true
+fn current_timestamp() -> u64 {
+    let now = std::time::SystemTime::now();
+    now.duration_since(std::time::UNIX_EPOCH)
+        .expect("Time is before unix epoch")
+        .as_secs()
+}
+
+fn check_timestamp(ts: u64) -> bool {
+    current_timestamp().wrapping_sub(ts) < 30
 }
 
 struct State {
     db: sqlx::SqlitePool,
+    cache: Mutex<lru::LruCache<String, ()>>,
 }
 
-fn internal_error(e: impl std::fmt::Debug) -> (StatusCode, String) {
+fn internal_error(e: impl std::fmt::Debug) -> (StatusCode, Json<String>) {
     let resp = format!("Internal error: {:?}", e);
     tracing::error!("Internal error: {:?}", e);
-    (StatusCode::INTERNAL_SERVER_ERROR, resp)
+    (StatusCode::INTERNAL_SERVER_ERROR, Json(resp))
 }
 
-fn bad_request(e: impl std::fmt::Debug) -> (StatusCode, String) {
+fn bad_request(e: impl std::fmt::Debug) -> (StatusCode, Json<String>) {
     let resp = format!("Bad request: {:?}", e);
     tracing::info!("Got invalid request: {:?}", e);
-    (StatusCode::BAD_REQUEST, resp)
+    (StatusCode::BAD_REQUEST, Json(resp))
 }
 
 #[derive(Deserialize)]
@@ -57,8 +72,8 @@ struct RegisterRequest {
 async fn register(
     body: String,
     Extension(state): Extension<Arc<State>>,
-) -> Result<(), (StatusCode, String)> {
-    if !check_nonce(&body) {
+) -> Result<(), (StatusCode, Json<String>)> {
+    if !check_nonce(&body, &state.cache) {
         return Err(bad_request("bad nonce"));
     }
 
@@ -77,7 +92,7 @@ async fn register(
     {
         return Err((
             StatusCode::CONFLICT,
-            format!("User {} already exists", &req.name),
+            Json(format!("User {} already exists", &req.name)),
         ));
     }
 
@@ -103,16 +118,25 @@ struct SetSiteRequest {
     timestamp: u64,
 }
 
-fn check_signature(req: &SetSiteRequest, _pubkey: &str) -> bool {
-    // TODO
-    !req.signature.is_empty()
+fn check_signature(
+    req: &SetSiteRequest,
+    pubkey: &p256::ecdsa::VerifyingKey,
+) -> Result<bool, (StatusCode, Json<String>)> {
+    let message = req.owner.clone() + &req.site + &req.timestamp.to_string();
+    let signature = hex::decode(&req.signature).map_err(bad_request)?;
+    Ok(pubkey
+        .verify(
+            message.as_bytes(),
+            &p256::ecdsa::Signature::from_der(&signature).map_err(bad_request)?,
+        )
+        .is_ok())
 }
 
 async fn set_site(
     body: String,
     Extension(state): Extension<Arc<State>>,
-) -> Result<(), (StatusCode, String)> {
-    if !check_nonce(&body) {
+) -> Result<(), (StatusCode, Json<String>)> {
+    if !check_nonce(&body, &state.cache) {
         return Err(bad_request("bad nonce"));
     }
 
@@ -130,14 +154,15 @@ async fn set_site(
         .ok_or_else(|| {
             (
                 StatusCode::UNAUTHORIZED,
-                format!("No user with name {}", &req.owner),
+                Json(format!("No user with name {}", &req.owner)),
             )
         })?
         .0;
-    if !check_signature(&req, &pubkey) {
+    let pubkey = VerifyingKey::from_str(&pubkey).map_err(internal_error)?;
+    if !check_signature(&req, &pubkey)? {
         return Err((
             StatusCode::UNAUTHORIZED,
-            format!("Invalid signature for user {}", &req.owner),
+            Json(format!("Invalid signature for user {}", &req.owner)),
         ));
     }
 
@@ -151,10 +176,10 @@ async fn set_site(
         if owner != req.owner {
             return Err((
                 StatusCode::FORBIDDEN,
-                format!(
+                Json(format!(
                     "Site {} is owned by {}, not {}",
                     &req.site, &req.owner, &owner
-                ),
+                )),
             ));
         }
         sqlx::query("UPDATE sites SET address = $1, expires = $2 WHERE name = $3")
@@ -182,7 +207,7 @@ async fn set_site(
 
 #[derive(Deserialize)]
 struct GetSiteRequest {
-    name: String,
+    site: String,
     timestamp: u64,
 }
 
@@ -204,8 +229,8 @@ struct Site {
 async fn get_site(
     body: String,
     Extension(state): Extension<Arc<State>>,
-) -> Result<Json<GetSiteResponse>, (StatusCode, String)> {
-    if !check_nonce(&body) {
+) -> Result<Json<GetSiteResponse>, (StatusCode, Json<String>)> {
+    if !check_nonce(&body, &state.cache) {
         return Err(bad_request("bad nonce"));
     }
 
@@ -215,24 +240,24 @@ async fn get_site(
     }
 
     let site: Site = sqlx::query_as("SELECT address, expires FROM sites WHERE name = $1")
-        .bind(&req.name)
+        .bind(&req.site)
         .fetch_optional(&state.db)
         .await
         .map_err(internal_error)?
         .ok_or_else(|| {
             (
                 StatusCode::NOT_FOUND,
-                format!("No site with name {}", &req.name),
+                Json(format!("No site with name {}", &req.site)),
             )
         })?;
 
     if site.expires < get_current_timestamp().map_err(internal_error)? {
         return Err((
             StatusCode::GONE,
-            format!(
+            Json(format!(
                 "Site {} already expired, please update it if you are owner",
-                &req.name
-            ),
+                &req.site
+            )),
         ));
     }
 
@@ -249,6 +274,7 @@ async fn main() {
 
     let state = Arc::new(State {
         db: db::try_connect_db(&args.db_addr).await.unwrap(),
+        cache: Mutex::new(lru::LruCache::new(HASH_CASH_SIZE)),
     });
 
     let app = Router::new()
