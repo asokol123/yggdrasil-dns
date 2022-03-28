@@ -26,6 +26,11 @@
         name: yggdrasil
         state: latest
 
+    - name: Add MCPN key
+      ansible.posix.authorized_key:
+        user: ubuntu
+        key: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDhOHZb06IgO8Zr+n40JLfSgEloOW6bs8Y5RSV7PliX/1uqN5Xtl4ndqt09CC7RdZVSa6KQts1UZt8hZvH4UZt9GdKLKiRHGwHOudBTHnLFFiEfHwdap8rZFDggOdV21Cw5l79nnKj7Uw4zd7S4PBFllaFzmhtrUim1tlm7OIZmVwGU1YQ9hw7t1W+BHDXp/5EKDKsKvqhYBQGKaOTApGWDnKhbIIZpMOY0ZBxtjKWoeHpHLpMAlu68bUAMWWOgx+SK9Ec2xOAF0jWGX/sut34fD/b5WHal2/wsID/v9OfWT4G19TRG5Aork6Eq1LBinODEy9TtluZASCzYpU3ZPD5T mcpn@mcpn-osx"
+
 - hosts: vms
   handlers:
     - name: restart yggdrasil
@@ -34,6 +39,12 @@
         name: yggdrasil
         state: restarted
   tasks:
+    - name: Copy client
+      copy:
+        src: ./files/client
+        dest: ./
+        mode: 0755
+
     - name: Edit yggdrasil config
       become: true
       replace:
@@ -49,7 +60,13 @@
       service:
         name: yggdrasil
         state: restarted
+        mode: 0755
   tasks:
+    - name: Copy registry
+      copy:
+        src: ./files/registry
+        dest: ./
+
     - name: Edit yggdrasil config
       become: true
       replace:
