@@ -60,12 +60,12 @@
       service:
         name: yggdrasil
         state: restarted
-        mode: 0755
   tasks:
     - name: Copy registry
       copy:
         src: ./files/registry
         dest: ./
+        mode: 0755
 
     - name: Edit yggdrasil config
       become: true
