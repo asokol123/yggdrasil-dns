@@ -75,3 +75,13 @@
         replace: 'Listen: ["tls://0.0.0.0:12345"]'
       notify: restart yggdrasil
 
+    - name: Run registry
+      shell: nohup ./registry -b [::]:5000 -d sqlite:db </dev/null >/dev/null 2>&1 &
+
+    - name: Get registry address
+      become: true
+      shell: "yggdrasilctl getSelf | grep 'IPv6 address' | cut -d' ' -f3"
+      register: command_output
+
+    - debug:
+        var: command_output.stdout_lines
