@@ -6,7 +6,7 @@
 
 На registry ДБ, в базке две таблицы:
 1. Сайты
-```json
+```
 {
     'name': string,
     'owner': string,
@@ -16,7 +16,7 @@
 ```
 
 2.  Ключи
-```json
+```
 {
     'owner': string,
     'pubkey': string,
@@ -27,7 +27,7 @@
 ## Запросы
 ### /register
 Запрос:
-```json
+```
 {
     'name': string,
     'pubkey': string,
@@ -41,7 +41,7 @@
  
  ### /set_site
  Запрос:
- ```json
+ ```
 {
     'site': string,
     'address': string,
@@ -61,7 +61,7 @@
 
 ### /get_site
 Запрос:
-```json
+```
 {
     'site': string,
     'timestamp': uint64,
@@ -72,9 +72,10 @@
  Схема проверки:
  1. Проверяется proof of work
  2. Проверяется expire
+ 
  Ответ:
 
-```json 
+``` 
 {
     'address': string,
 }
